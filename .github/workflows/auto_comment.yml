@@ -1,0 +1,87 @@
+name: pixiv-auto-comment
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只打印不发评论（填 1 开启）"
+        required: false
+        default: "0"
+      artist_ids:
+        description: "临时覆盖画师 id（留空用默认）"
+        required: false
+        default: ""
+      comment_text:
+        description: "临时覆盖评论内容（用 | 分隔多条循环）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pixiv-auto-comment
+  cancel-in-progress: false
+
+jobs:
+  auto-comment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      TZ: Asia/Shanghai
+      STATE_FILE: seen_posts.json
+      PIXIV_ARTIST_ID: ${{ github.event.inputs.artist_ids || secrets.PIXIV_ARTIST_ID || vars.PIXIV_ARTIST_ID || '34931308' }}
+      PIXIV_REFRESH_TOKEN: ${{ secrets.PIXIV_REFRESH_TOKEN }}
+      PIXIV_PHPSESSID: ${{ secrets.PIXIV_PHPSESSID }}
+      COMMENT_TEXT: ${{ github.event.inputs.comment_text || secrets.COMMENT_TEXT }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+      HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+      HTTPS_PROXY: ${{ secrets.HTTP_PROXY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run auto comment
+        run: python auto_comment.py
+
+      - name: Commit state
+        if: always()
+        run: |
+          if [ ! -f seen_posts.json ]; then
+            echo "seen_posts.json 不存在，跳过提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f seen_posts.json
+          if git diff --cached --quiet; then
+            echo "状态无变化，无需提交"
+            exit 0
+          fi
+          git commit -m "chore: update seen_posts.json [skip ci]"
+          for i in 1 2 3; do
+            if git push; then
+              echo "推送成功"
+              exit 0
+            fi
+            echo "第 $i 次推送失败，rebase 后重试"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            sleep 3
+          done
+          echo "推送失败，状态仅保留在本次运行中"
+          exit 0
