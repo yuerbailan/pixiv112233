@@ -1,8 +1,6 @@
 name: pixiv-auto-comment
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -10,7 +8,7 @@ on:
         required: false
         default: "0"
       artist_ids:
-        description: "临时覆盖画师 id（留空用默认）"
+        description: "临时覆盖画师 id（逗号分隔，留空用默认）"
         required: false
         default: ""
       comment_text:
@@ -34,7 +32,6 @@ jobs:
       TZ: Asia/Shanghai
       STATE_FILE: seen_posts.json
       PIXIV_ARTIST_ID: ${{ github.event.inputs.artist_ids || secrets.PIXIV_ARTIST_ID || vars.PIXIV_ARTIST_ID || '34931308' }}
-      PIXIV_REFRESH_TOKEN: ${{ secrets.PIXIV_REFRESH_TOKEN }}
       PIXIV_PHPSESSID: ${{ secrets.PIXIV_PHPSESSID }}
       COMMENT_TEXT: ${{ github.event.inputs.comment_text || secrets.COMMENT_TEXT }}
       DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
